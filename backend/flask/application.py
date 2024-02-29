@@ -42,15 +42,24 @@ from opensearchpy import OpenSearch
 from opensearchpy.connection import RequestsHttpConnection
 from threading import Lock
 from argparse import ArgumentTypeError
+from flask import Flask, send_from_directory
+app = Flask(__name__, static_folder='build', static_url_path='')
 
-app = Flask(__name__)
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def catch_all(path):
+    if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
+        return send_from_directory(app.static_folder, path)
+    else:
+        return send_from_directory(app.static_folder, 'index.html')
+
 CORS(app)
 
 aws_region = 'us-west-2'
 aws_service = 'bedrock'
 chathistory = []
 
-aws_cli_profile_name = ''
+aws_cli_profile_name = 'raminn'
 session = boto3.Session(profile_name=aws_cli_profile_name)
 # session = boto3.Session()
 bedrock_client = session.client(service_name='bedrock', region_name=aws_region, endpoint_url='https://bedrock-runtime.'+aws_region+'.amazonaws.com')
@@ -68,7 +77,14 @@ class VectorDatabase:
         self.kendra_client = None
         self.kendra_retriever = None
         self.vector_initialized = False
-        self.prompt_template = "Use the context to answer the question at the end. If you don't know the answer from the context, do not answer from your knowledge and be precise. Dont fake the answer."
+        self.prompt_template = '''Use the context provided to answer the question at the end. When providing your response, follow this template and format:
+
+                                    - Citation: (This section should include the document name and page number where the correct answer was found. Only the title 'Citation' should be bold.Ensure this section is on a separate line.)
+                                    - Answer: (This section should provide the direct answer to the question based on the document context. Only the title 'Answer' should be bold.Ensure this section is on a separate line.)
+                                    - Long Synopsis: (This section should include a detailed summary of the document where the correct answer was found. Only the title 'Long Synopsis' should be bold.Ensure this section is on a separate line.)
+                                    - Short Synopsis: (This section should provide a brief summary of the document. Only the title 'Short Synopsis' should be bold.Ensure this section is on a separate line.)
+                                    - Next Suggested Questions: (This section should suggest three follow-up questions based on the context, chat history, and the current question. Only the title 'Next Suggested Questions' should be bold.Ensure this section is on a separate line.)
+                                    Your response should only contain the above parts do not add anything else.Each part should be clearly separated, with each title in bold, and each section starting on a new line.Provide your answer only in English.If the correct answer is not available from the context given, do not supplement from your own knowledge. Be precise and do not fabricate the answer. Follow these guidelines strictly'''
 
     def update_prompt_template(self, template):
         self.prompt_template = template
